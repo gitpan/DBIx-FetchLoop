@@ -1,3 +1,6 @@
+########################################
+## Copyright (c) 2002 - Brendan L. Fagan
+########################################
 package DBIx::FetchLoop;
 
 use strict;
@@ -6,7 +9,7 @@ use vars qw($VERSION @ISA);
 use Carp;
 use DBI;
 
-$VERSION = '0.3';
+$VERSION = '0.4';
 
 ########################################
 ## public methods
@@ -164,21 +167,53 @@ sub _process_concatenates {
 }
 sub pre_loop {
 	my ($obj,$field) = @_;
-
-	if ($obj->{_data}->{previous}->{$field} ne $obj->{_data}->{current}->{$field}) {
-		return 1;
+	if ($field) {
+		if ($obj->{_data}->{previous}->{$field} ne $obj->{_data}->{current}->{$field}) {
+			return 1;
+		} else {
+			return 0;
+		}
 	} else {
-		return 0;
+		warn("Error: $field required when calling pre_loop");
+	}
+}
+
+sub pre_loop_substr {
+	my ($obj,$field,$offset,$length) = @_;
+	if ($field && $offset && $length) {
+		if (substr($obj->{_data}->{previous}->{$field},$offset,$length) ne substr($obj->{_data}->{current}->{$field},$offset,$length)) {
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		warn("Error: $field, $offset, $length required when calling pre_loop_substr");
 	}
 }
 
 sub post_loop {
 	my ($obj,$field) = (@_);
-
-	if ($obj->{_data}->{current}->{$field} ne $obj->{_data}->{next}->{$field}) {
-		return 1;
+	if ($field) {
+		if ($obj->{_data}->{current}->{$field} ne $obj->{_data}->{next}->{$field}) {
+			return 1;
+		} else {
+			return 0;
+		}
 	} else {
-		return 0;
+		warn("Error: $field required when calling post_loop");
+	}
+}
+
+sub post_loop_substr {
+	my ($obj,$field,$offset,$length) = @_;
+	if ($field && $offset && $length) {
+		if (substr($obj->{_data}->{current}->{$field},$offset,$length) ne substr($obj->{_data}->{next}->{$field},$offset,$length)) {
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		warn("Error: $field, $offset, $length required when calling post_loop_substr");
 	}
 }
 
@@ -219,24 +254,56 @@ sub _process_concatenates {
 
 sub pre_loop {
 	my ($obj,$field) = (@_);
-
-	if ($obj->{_data}->{previous}->[$field] ne $obj->{_data}->{current}->[$field]) {
-		return 1;
+	if ($field) {
+		if ($obj->{_data}->{previous}->[$field] ne $obj->{_data}->{current}->[$field]) {
+			return 1;
+		} else {
+			return 0;
+		}
 	} else {
-		return 0;
+		warn("Error: $field required when calling pre_loop");
+	}
+}
+
+sub pre_loop_substr {
+	my ($obj,$field,$offset,$length) = @_;
+	if ($field && $offset && $length) {
+		if (substr($obj->{_data}->{previous}->[$field],$offset,$length) ne substr($obj->{_data}->{current}->[$field],$offset,$length)) {
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		warn("Error: $field, $offset, $length required when calling pre_loop_substr");
 	}
 }
 
 sub post_loop {
 	my ($obj,$field) = (@_);
-
-	if ($obj->{_data}->{current}->[$field] ne $obj->{_data}->[next]->{$field}) {
-		return 1;
+	if ($field) {
+		if ($obj->{_data}->{current}->[$field] ne $obj->{_data}->[next]->{$field}) {
+			return 1;
+		} else {
+			return 0;
+		}
 	} else {
-		return 0;
+		warn("Error: $field required when calling post_loop");
 	}
 }
- 
+
+sub post_loop_substr {
+	my ($obj,$field,$offset,$length) = @_;
+	if ($field && $offset && $length) {
+		if (substr($obj->{_data}->{current}->[$field],$offset,$length) ne substr($obj->{_data}->{next}->[$field],$offset,$length)) {
+			return 1;
+		} else {
+			return 0;
+		}
+	} else {
+		warn("Error: $field, $offset, $length required when calling post_loop_substr");
+	}
+}
+
 sub _reset_field {
 	my ($obj,$field) = @_;
 	$obj->{_data}->{current}->[$field] = undef;
@@ -267,6 +334,9 @@ DBIx::FetchLoop - Fetch with change detection and aggregates
   $boolean = $lph->pre_loop($field);
   $boolean = $lph->post_loop($field); 
 
+  $boolean = $lph->pre_loop_substr($field,$offset,$length);
+  $boolean = $lph->post_loop_substr($field,$offset,$length);
+
   $boolean = $lph->is_first;
   $boolean = $lph->is_last;
 
@@ -284,7 +354,7 @@ Note:
 This module was created with ease of use and performance in mind.  This module is intended to 
 eliminate the need for temporary variables for loop detection as well as aggregation and concatenation.
 The reason that not all DBI methods for data retrieval are not implemented (such as selectall_arrayref) 
-is that the modules design for performance would be defeated.  
+is that the module's design for performance would be defeated.  
 
 In essence you can write cleaner looking, more efficient code minus a few hassles.
 
@@ -310,7 +380,7 @@ Instantiating an object would look like this:
   $sth = $dbh->prepare($sql);
   $lph = DBIx::FetchLoop->new($sth,'fetchrow_hashref');
 
-If $dbi_method is not supplied, the modules will default to using fetchrow_hashref.
+If $dbi_method is not supplied, the module will default to using fetchrow_hashref.
 
 =head2 Retrieving data:
 
@@ -337,7 +407,10 @@ These functions exist to make the code necessary for detecting a new loop a litt
 
   $lph->pre_loop($field);  - compares $field between previous and current rows, returns true if different
   $lph->post_loop($field); - compares $field between current and next rows, returns true if different
-
+  
+  $lph->pre_loop_substr($field,$offset,$length);  - compares substring of $field between previous and current rows, returns true if different
+  $lph->post_loop_substr($field,$offset,$length);- compares substring of $field between current and next rows, returns true if different
+  
   $lph->is_first; - returns true if current record is first record
   $lph->is_last;  - returns true if current record is last record
 
@@ -437,7 +510,7 @@ called anytime during the running of the program.
   $dbh->disconnect;
 
 
-=head2 Example 3 (concatenation and manual loop logic)
+=head2 Example 3 (concatenation, fetchrow_hashref and substring comparison)
 
   use DBI;
   use DBIx::FetchLoop;
@@ -458,13 +531,13 @@ called anytime during the running of the program.
       print "Group: " . $d->{current}->{news_group} . "\n";
     }
 
-    if (substr($d->{previous}->{message_header},4,10) ne substr($d->{current}->{message_header},4,10)) { 
+    if ($lph->pre_loop_substr('message_header',4,10)) { 
       print "Title: " . substr($d->{current}->{message_header},4,10) . "\n";
       print "Author: " . substr($d->{current}->{message_header},14,10) . "\n";
       print "Result #" . $lph->count . "\n";
     }
 
-    if (substr($d->{current}->{message_header},4,10) ne substr($d->{next}->{message_header},4,10)) { 
+    if (i$lph->post_loop_substr('message_header',4,10)) { 
       print "Message: \n" . $d->{current}->{whole_message} . "\n\n";
       $lph->reset_concatenate('whole_message');
     }
@@ -477,21 +550,17 @@ called anytime during the running of the program.
 
   $dbh->disconnect;
 
-=head1 ChangeLog
+=head1 CHANGES
 
-v.3 - added $lph->is_first, $lph->is_last, and $lph->count methods
+Please see the CHANGES file in the module distribution.
 
-v.2 - support of fetchrow_hashref and fetchrow_arrayref
+=head1 TO-DO
 
-v.1 - initial version
+ - Spend more time on the documentation.
 
-=head1 To-Do
+ - More in-depth examples (with comments)
 
-Spend more time on the documentation.
-
-More in-depth examples (with comments)
-
-=head1 Acknowledgements
+=head1 ACKNOWLEDGEMENTS
 
 Thanks to Tim Bunce for a lesson in the finer points of module naming.  :)
 
@@ -500,5 +569,9 @@ Thanks to Ron M'Sadoques and Tom (d'Oh) Sullivan for listening to my ideas and c
 =head1 AUTHOR 
 
 Brendan L. Fagan <bits@csh.rit.edu>. Comments, bug reports, patches and flames are appreciated. 
+
+=head1 COPYRIGHT
+
+Copyright (c) 2002 - Brendan L. Fagan
 
 =cut

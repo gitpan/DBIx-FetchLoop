@@ -1,3 +1,5 @@
+DBIx::FetchLoop - Installation instructions
+
 How to install:
 
   perl Makefile.PL
