@@ -1,5 +1,9 @@
 DBIx::FetchLoop - Changelog
 
+v.41 Minor release
+ - FetchLoop.pm had DOS newline characters, this caused pod2html to fail
+   replaced with Unix EOLs
+
 v.4 Major release
  - Added (still) more error handling
  - Added $lph->pre_loop_substr and $lph->post_loop_substr

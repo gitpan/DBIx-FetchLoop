@@ -9,7 +9,7 @@ use vars qw($VERSION @ISA);
 use Carp;
 use DBI;
 
-$VERSION = '0.4';
+$VERSION = '0.41';
 
 ########################################
 ## public methods
@@ -358,7 +358,6 @@ is that the module's design for performance would be defeated.
 
 In essence you can write cleaner looking, more efficient code minus a few hassles.
 
-
 =head1 METHODS
 
 =head2 Instantiating a DBIx::FetchLoop object:
@@ -400,17 +399,16 @@ eg (fetchrow_arrayref)
   $d->{current}->[1] 
   $d->{next}->[1] 
 
-
 =head2 Conditional testing:
 
 These functions exist to make the code necessary for detecting a new loop a little cleaner.
 
   $lph->pre_loop($field);  - compares $field between previous and current rows, returns true if different
   $lph->post_loop($field); - compares $field between current and next rows, returns true if different
-  
+ 
   $lph->pre_loop_substr($field,$offset,$length);  - compares substring of $field between previous and current rows, returns true if different
   $lph->post_loop_substr($field,$offset,$length);- compares substring of $field between current and next rows, returns true if different
-  
+ 
   $lph->is_first; - returns true if current record is first record
   $lph->is_last;  - returns true if current record is last record
 
@@ -430,7 +428,6 @@ These functions reset the value of the specified field to undef in the current d
 called anytime during the running of the program.
 
   $lph->count; - return the number of the current row returned (starts at 1)
-
 
 =head1 EXAMPLES
 
