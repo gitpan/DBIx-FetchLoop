@@ -1,6 +1,6 @@
-########################################
-## Copyright (c) 2002 - Brendan L. Fagan
-########################################
+##############################################
+## Copyright (c) 2002-2004 - Brendan Fagan
+##############################################
 package DBIx::FetchLoop;
 
 use strict;
@@ -9,16 +9,23 @@ use vars qw($VERSION @ISA);
 use Carp;
 use DBI;
 
-$VERSION = '0.41';
+$VERSION = '0.6';
 
-########################################
+##############################################
 ## public methods
-########################################
+##############################################
 sub new {
 	my ($class,$sth,$dbi_method) = @_;
-	$sth->execute() || croak($DBI::ERRSTR);
+	unless($sth) {
+                my ($p,$f,$l) = caller();
+                croak("DBIx::FetchLoop statement handle empty from $p, $f at line $l\n");
+        }  
+        unless($sth->execute()) {
+                my ($p,$f,$l) = caller();
+                croak("DBIx::FetchLoop failed execute from $p, $f at line $l\n");
+        }  
 	my $obj = bless {
-		_sth 		=> $sth		|| croak('DBI statement handle required'),
+		_sth 		=> $sth,
 		_dbi_method	=> $dbi_method	|| 'fetchrow_hashref',
 		_data		=> {},
 		_aggregates	=> {},
@@ -48,8 +55,14 @@ sub fetch_current_data {
 			$obj->{_data}->{previous} = $current;
 		} else {
 			$obj->{_data}->{current} = $obj->_fetch || undef;	
-			if ($obj->{_data}->{current}) { $obj->{_count}++; }
-			else { $obj->{_flags}->{done} = 1; return undef; }
+			if ($obj->{_data}->{current}) {
+				$obj->{_count}++; 
+			} else { 
+				$obj->{_flags}->{done} = 1; 
+				$obj->{_sth}->finish();
+				undef $obj->{_sth};
+				return undef; 
+			}
 		}
 	
 		undef $current;
@@ -61,9 +74,10 @@ sub fetch_current_data {
 	
 		undef $next;
 	
-		unless( $obj->{_data}->{next} = $obj->_fetch) {
-			$obj->{_sth}->finish();
+		unless ($obj->{_data}->{next} = $obj->_fetch) {
 			$obj->{_flags}->{done} = 1;
+			$obj->{_sth}->finish();
+			undef $obj->{_sth};
 		}
 
 		$obj->_process_aggregates;
@@ -73,6 +87,71 @@ sub fetch_current_data {
 			return $obj->{_data};
 		}
 	} return undef;
+}
+
+sub fetch_current_row {
+	my $obj = shift;
+
+	my $data = $obj->fetch_current_data;
+	if ($data) {
+		return $data->{current};
+	} else {
+		return undef;
+	}
+}
+
+sub previous {
+	my $obj = shift;
+
+	CASE: {
+		unless ($obj->{_data}) {
+			return undef;
+			last CASE;
+		}
+
+		unless ($obj->{_data}->{previous}) {
+			return undef;
+			last CASE;
+		}
+		
+		return $obj->{_data}->{previous};
+	}
+}
+
+sub current {
+	my $obj = shift;
+
+	CASE: {
+		unless ($obj->{_data}) {
+			return undef;
+			last CASE;
+		}
+
+		unless ($obj->{_data}->{current}) {
+			return undef;
+			last CASE;
+		}
+		
+		return $obj->{_data}->{current};
+	}
+}
+
+sub next {
+	my $obj = shift;
+
+	CASE: {
+		unless ($obj->{_data}) {
+			return undef;
+			last CASE;
+		}
+
+		unless ($obj->{_data}->{next}) {
+			return undef;
+			last CASE;
+		}
+		
+		return $obj->{_data}->{next};
+	}
 }
 
 sub is_first {
@@ -100,7 +179,7 @@ sub set_aggregate {
 		my $array = $obj->{_agg_list};
 		push(@$array,$aggregate);
 	} else {
-		warn("Error: set_aggregate must be called before fetch_current_data");
+		warn('Error: set_aggregate must be called before fetch_current_data or fetch_current_row');
 	}
 }
 sub set_concatenate {
@@ -111,7 +190,7 @@ sub set_concatenate {
 		my $array = $obj->{_cat_list};
 		push(@$array,$concatenate);
 	} else {
-		warn("Error: set_concatenate must be called before fetch_current_data");
+		warn('Error: set_concatenate must be called before fetch_current_data or fetch_current_row');
 	}
 }
  
@@ -125,20 +204,22 @@ sub reset_concatenate {
 	$obj->_reset_field($concatenate);
 }
 
-########################################
+##############################################
 ## Module cleanup
-########################################
+##############################################
 sub DESTROY {
 	my $obj = shift;
 
 	if (($obj->{_flags}->{kinetic} == 1) && ($obj->{_flags}->{done} != 1)) {
-		$obj->{_sth}->finish;
+		if ($obj->{_sth}) {
+			$obj->{_sth}->finish;
+		}
 	}
 }
 
-########################################
-## methods: fetchrow_hashref
-########################################
+##############################################
+## private methods: fetchrow_hashref
+##############################################
 package DBIx::FetchLoop::fetchrow_hashref;
 
 sub _fetch {
@@ -174,20 +255,20 @@ sub pre_loop {
 			return 0;
 		}
 	} else {
-		warn("Error: $field required when calling pre_loop");
+		warn('Error: $field required when calling pre_loop');
 	}
 }
 
 sub pre_loop_substr {
 	my ($obj,$field,$offset,$length) = @_;
-	if ($field && $offset && $length) {
-		if (substr($obj->{_data}->{previous}->{$field},$offset,$length) ne substr($obj->{_data}->{current}->{$field},$offset,$length)) {
+	if ($field && $length) {
+		if (uc(substr($obj->{_data}->{previous}->{$field},$offset,$length)) ne uc(substr($obj->{_data}->{current}->{$field},$offset,$length))) {
 			return 1;
 		} else {
 			return 0;
 		}
 	} else {
-		warn("Error: $field, $offset, $length required when calling pre_loop_substr");
+		warn('Error: $field, $offset, $length required when calling pre_loop_substr');
 	}
 }
 
@@ -200,20 +281,20 @@ sub post_loop {
 			return 0;
 		}
 	} else {
-		warn("Error: $field required when calling post_loop");
+		warn('Error: $field required when calling post_loop');
 	}
 }
 
 sub post_loop_substr {
 	my ($obj,$field,$offset,$length) = @_;
-	if ($field && $offset && $length) {
+	if ($field && $length) {
 		if (substr($obj->{_data}->{current}->{$field},$offset,$length) ne substr($obj->{_data}->{next}->{$field},$offset,$length)) {
 			return 1;
 		} else {
 			return 0;
 		}
 	} else {
-		warn("Error: $field, $offset, $length required when calling post_loop_substr");
+		warn('Error: $field, $offset, $length required when calling post_loop_substr');
 	}
 }
 
@@ -222,9 +303,9 @@ sub _reset_field {
 	$obj->{_data}->{current}->{$field} = undef;
 }
 
-########################################
-## methods: fetchrow_arrayref
-########################################
+##############################################
+## private methods: fetchrow_arrayref
+##############################################
 package DBIx::FetchLoop::fetchrow_arrayref;
 
 sub _fetch {
@@ -261,20 +342,20 @@ sub pre_loop {
 			return 0;
 		}
 	} else {
-		warn("Error: $field required when calling pre_loop");
+		warn('Error: $field required when calling pre_loop');
 	}
 }
 
 sub pre_loop_substr {
 	my ($obj,$field,$offset,$length) = @_;
-	if ($field && $offset && $length) {
+	if ($field && $length) {
 		if (substr($obj->{_data}->{previous}->[$field],$offset,$length) ne substr($obj->{_data}->{current}->[$field],$offset,$length)) {
 			return 1;
 		} else {
 			return 0;
 		}
 	} else {
-		warn("Error: $field, $offset, $length required when calling pre_loop_substr");
+		warn('Error: $field, $offset, $length required when calling pre_loop_substr');
 	}
 }
 
@@ -287,20 +368,20 @@ sub post_loop {
 			return 0;
 		}
 	} else {
-		warn("Error: $field required when calling post_loop");
+		warn('Error: $field required when calling post_loop');
 	}
 }
 
 sub post_loop_substr {
 	my ($obj,$field,$offset,$length) = @_;
-	if ($field && $offset && $length) {
+	if ($field && $length) {
 		if (substr($obj->{_data}->{current}->[$field],$offset,$length) ne substr($obj->{_data}->{next}->[$field],$offset,$length)) {
 			return 1;
 		} else {
 			return 0;
 		}
 	} else {
-		warn("Error: $field, $offset, $length required when calling post_loop_substr");
+		warn('Error: $field, $offset, $length required when calling post_loop_substr');
 	}
 }
 
@@ -324,6 +405,15 @@ DBIx::FetchLoop - Fetch with change detection and aggregates
   $lph = DBIx::FetchLoop->new($sth, $dbi_method);
 
   $hash_ref = $lph->fetch_current_data;
+  $rowset = $hash_ref->{previous};
+  $rowset = $hash_ref->{current};
+  $rowset = $hash_ref->{next};
+
+  $rowset = $lph->fetch_current_row;
+
+  $rowset = $lph->previous;
+  $rowset = $lph->current;
+  $rowset = $lph->next;
 
   $lph->set_aggregate($new_field, $field);
   $lph->reset_aggregate($new_field);
@@ -381,7 +471,11 @@ Instantiating an object would look like this:
 
 If $dbi_method is not supplied, the module will default to using fetchrow_hashref.
 
-=head2 Retrieving data:
+The loop must be operated by calling $lph->fetch_current_data or $lph->fetch_current_row.
+
+When the loop is done operating, DBIx::FetchLoop will call $sth->finish on the statement handle.
+
+=head2 Retrieving data with fetch_current_data:
 
   $d = $lph->fetch_current_data;
 
@@ -398,6 +492,29 @@ eg (fetchrow_arrayref)
   $d->{previous}->[1] 
   $d->{current}->[1] 
   $d->{next}->[1] 
+
+
+=head2 Retrieving data with fetch_current_row:
+
+This was added as an implementation to make code a bit cleaner and simpler to use. 
+
+  $rowset = $lph->fetch_current_row;
+
+eg (fetchrow_hashref)
+
+  $rowset->{field} 
+
+eg (fetchrow_arrayref) 
+
+  $rowset->[1] 
+
+=head2 Accessor methods:
+
+Regardless of calling $lph->fetch_current_row or $lph->fetch_current_data, you can use accessor methods to access the previous, next, and current rows.
+
+$rowset = $lph->previous;
+$rowset = $lph->current;
+$rowset = $lph->next;
 
 =head2 Conditional testing:
 
@@ -443,25 +560,25 @@ called anytime during the running of the program.
   $lph->set_aggregate('department_rollup','balance');
   $lph->set_aggregate('company_rollup','balance');
 
-  while (my $d = $lph->fetch_current_data) {
+  while (my $d = $lph->fetch_current_row) {
 
     if ($lph->pre_loop('company')) {
-      print "Company: " . $d->{current}->{company} . "\n";
+      print "Company: " . $d->{company} . "\n";
     }
 
     if ($lph->pre_loop('department')) {
-      print "Department: " . $d->{current}->{department} . "\n";
+      print "Department: " . $d->{department} . "\n";
     }
 
-    print "Account: " . $d->{current}->{bank_account} . " : " . $d->{current}->{balance} . "\n";
+    print "Account: " . $d->{bank_account} . " : " . $d->{balance} . "\n";
 
     if ($lph->post_loop('department')) {
-      print "Department Balance: " . $d->{current}->{department_rollup} . "\n";
+      print "Department Balance: " . $d->{department_rollup} . "\n";
       $lph->reset_aggregate('department_rollup');
     }
 
     if ($lph->post_loop('company')) {
-      print "Company Balance: " . $d->{current}->{company_rollup} . "\n\n";
+      print "Company Balance: " . $d->{company_rollup} . "\n\n";
       $lph->reset_aggregate('company_rollup');
     }
   }
@@ -561,14 +678,12 @@ Please see the CHANGES file in the module distribution.
 
 Thanks to Tim Bunce for a lesson in the finer points of module naming.  :)
 
-Thanks to Ron M'Sadoques and Tom (d'Oh) Sullivan for listening to my ideas and constant promises to get around to writing this module.
-
 =head1 AUTHOR 
 
-Brendan L. Fagan <bits@csh.rit.edu>. Comments, bug reports, patches and flames are appreciated. 
+Brendan Fagan <suburbanantihero (at) yahoo (dot) com>. Comments, bug reports, patches and flames are appreciated. 
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002 - Brendan L. Fagan
+Copyright (c) 2002-2004 - Brendan Fagan
 
 =cut

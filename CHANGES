@@ -1,5 +1,13 @@
 DBIx::FetchLoop - Changelog
 
+v.6 Major release
+ - Added accessor methods $lph->previous, $lph->current and $lph->next
+ - Added $lph->fetch_current_row for cleaner code
+
+v.5 Major release
+ - Fixed bugs in the parameter validation of the substring functions
+ - Added better error handling and error messages on failure
+
 v.41 Minor release
  - FetchLoop.pm had DOS newline characters, this caused pod2html to fail
    replaced with Unix EOLs
