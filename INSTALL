@@ -1,0 +1,7 @@
+How to install:
+
+  perl Makefile.PL
+  make
+  make install
+
+There are no make tests at this time.
